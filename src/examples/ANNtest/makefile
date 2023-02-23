@@ -1,6 +1,6 @@
 CXX = g++
 #CXX = clang++
-DIR_PARLAY = /home/dappur/Software/parlaylib/include
+DIR_PARLAY = ./parlaylib/include
 DIR_FALCONN = ../../include
 DIR_EIGEN = ../../../external/eigen
 DIR_SERIALIZER = -I ../../../external/simple-serializer
