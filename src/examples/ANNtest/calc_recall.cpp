@@ -88,12 +88,10 @@ size_t output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal:
 	});
 	t.next("Warm-up search");
 
-	for(size_t i=0; i<cnt_query; ++i)
-	{
+	parlay::parallel_for(0, cnt_query, [&](size_t i){
 		// query_pool->find_k_nearest_neighbors(q[i], recall, &res[i]);
 		query_pool->get_candidates_with_duplicates(q[i], &res[i]);
-	};
-	
+	});
 	double time_query = t.next_time();
 	printf("FALCONN: Find neighbors: %.4f\n", time_query);
 
@@ -222,6 +220,9 @@ void run_test(commandLine args) // intend to pass by value
 	printf("col: %lu\n", ps[0].cols());
 	printf("row: %lu\n", ps[0].rows());
 	printf("size: %lu\n", ps[0].size());
+
+	visit_point(ps, ps.size(), dim);
+	t.next("Fetch input vectors");
 
 	const uint32_t num_hashtbl = args.getOptionIntValue("-l", 50); // 40~80
 	const uint32_t num_rotations = args.getOptionIntValue("-rot", 1);
