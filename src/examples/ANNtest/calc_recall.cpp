@@ -229,6 +229,8 @@ void run_test(commandLine args) // intend to pass by value
 	const auto lsh_family = args.getOptionValue("-lsh", "cp");
 	const auto dist_func = args.getOptionValue("-dist", "L2");
 	const uint32_t num_hashbit = args.getOptionIntValue("-b", ceil(log2(ps.size()))-2);
+	const uint32_t K = args.getOptionIntValue("-K", 0);
+	const uint32_t lastk = args.getOptionIntValue("-lastk", 0);
 	printf("num_hashbit: %u\n", num_hashtbl);
 
 	falconn::LSHConstructionParameters params;
@@ -247,9 +249,22 @@ void run_test(commandLine args) // intend to pass by value
 	params.dimension = dim;
 	params.l = num_hashtbl;
 	params.num_rotations = num_rotations;
+
+	// This function will set both `k` and `last_cp_dimension`
 	falconn::compute_number_of_hash_functions<type_point>(num_hashbit, &params);
+	if(K) params.k = K;
+	if(lastk) params.last_cp_dimension = lastk;
+
 	params.num_setup_threads = 0; // use up all the threads
 	params.storage_hash_table = falconn::StorageHashTable::BitPackedFlatHashTable;
+
+	puts("======= key params for building FALCONN ======");
+	printf("params.lsh_family: %s\n", lsh_family.c_str());
+	printf("params.l: %ld\n", params.l);
+	printf("params.k: %ld\n", params.k);
+	printf("params.last_cp_dimension: %ld\n", params.last_cp_dimension);
+	printf("params.num_rotations: %ld\n", params.num_rotations);
+
 	fputs("Start building FALCONN\n", stderr);
 	auto ptbl = falconn::construct_table<type_point,uint32_t>(ps, params); // TODO
 	t.next("Build index");
@@ -264,9 +279,10 @@ int main(int argc, char **argv)
 	putchar('\n');
 
 	commandLine parameter(argc, argv, 
-		"-type <elemType> -n <numInput> -r <recall@R>,... -th <threshold>,..."
+		"-type <elemType> -n <numInput> -r <recall@R>,... -th <threshold>,... "
 		"-in <inFile> -q <queryFile> -g <groundtruthFile> [-k <numQuery>=all] "
-		"-dist (L2|ndot) -lsh (cp|hp) -l <numHashTable> [-b <numHashBit>] [-rot <numRotation>]"
+		"-dist (L2|ndot) -lsh (cp|hp) -l <numHashTable> [-b <numHashBit>] [-rot <numRotation>] "
+		"[-K numHashFunc] [-lastk <last_cp_dimension>]"
 	);
 
 	const char* type = parameter.getOptionValue("-type");
