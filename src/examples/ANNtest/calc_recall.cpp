@@ -79,18 +79,32 @@ template<typename T, class U, class V>
 size_t output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal::timer &t, uint32_t num_probes, uint32_t recall, 
 	uint32_t cnt_query, std::vector<V> &q, std::vector<uint32_t*> &gt, uint32_t rank_max)
 {
-	std::unique_ptr<falconn::LSHNearestNeighborQueryPool<U,uint32_t>> query_pool(tbl.construct_query_pool(num_probes));
-
+	typedef std::pair<uint32_t,float> pair;
+	std::unique_ptr<falconn::LSHNearestNeighborQueryPool<U,uint32_t>> 
+		query_pool(tbl.construct_query_pool(num_probes, 1000*recall/*TODO*/, parlay::num_workers()));
+	// parlay::sequence<std::vector<uint32_t>> res_raw(parlay::num_workers());
+	// parlay::sequence<parlay::sequence<pair>> res(cnt_query);
 	parlay::sequence<std::vector<uint32_t>> res(cnt_query);
+
+	auto do_query = [&](size_t i){
+		query_pool->find_k_nearest_neighbors(q[i], recall, &res[i]);
+		/*
+		const auto tid = parlay::worker_id();
+		query_pool->get_candidates_with_duplicates(q, res_raw[tid]);
+		res[i] = parlay::tabulate(res_raw[tid].size(), [&](size_t j){
+			const auto v = res_raw[tid][j];
+			return pair{v, };
+		});
+		*/
+	};
+
 	parlay::parallel_for(0, cnt_query, [&](size_t i){
-		// query_pool->find_k_nearest_neighbors(q[i], recall, &res[i]);
-		query_pool->get_candidates_with_duplicates(q[i], &res[i]);
+		do_query(i);
 	});
 	t.next("Warm-up search");
 
 	parlay::parallel_for(0, cnt_query, [&](size_t i){
-		// query_pool->find_k_nearest_neighbors(q[i], recall, &res[i]);
-		query_pool->get_candidates_with_duplicates(q[i], &res[i]);
+		do_query(i);
 	});
 	double time_query = t.next_time();
 	printf("FALCONN: Find neighbors: %.4f\n", time_query);
@@ -192,7 +206,7 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 				r = std::min(r*2, r_limit);
 			}
 			if(!found) break;
-			while(r-l>5)
+			while(r-l>l*0.05+1)
 			{
 				const auto mid = (l+r)/2;
 				const auto best_shot = get_best(k,mid);
