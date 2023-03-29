@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <unordered_set>
 
 #include "../falconn_global.h"
 #include "data_storage.h"
@@ -120,7 +121,7 @@ class StaticLSHTable
    public:
     Query(const StaticLSHTable& parent)
         : parent_(parent),
-          is_candidate_(parent.n_),
+          // is_candidate_(parent.n_),
           lsh_query_(*(parent.lsh_)) {}
 
     void get_candidates_with_duplicates(const PointType& p,
@@ -211,7 +212,8 @@ class StaticLSHTable
    private:
     const StaticLSHTable& parent_;
     int_fast32_t query_counter_ = 0;
-    std::vector<int32_t> is_candidate_;
+    // std::vector<int32_t> is_candidate_;
+    std::unordered_set<bool> is_candidate_;
     typename LSH::Query lsh_query_;
     std::vector<std::vector<HashType>> tmp_probes_by_table_;
     std::pair<typename HashTable::Iterator, typename HashTable::Iterator>
@@ -236,6 +238,7 @@ class StaticLSHTable
       hash_table_iterators_ =
           parent_.hash_table_->retrieve_bulk(tmp_probes_by_table_);
       query_counter_ += 1;
+      is_candidate_.clear();
 
       int_fast64_t num_candidates = 0;
       result->clear();
@@ -246,8 +249,9 @@ class StaticLSHTable
              hash_table_iterators_.first != hash_table_iterators_.second) {
         num_candidates += 1;
         int_fast64_t cur = *(hash_table_iterators_.first);
-        if (is_candidate_[cur] != query_counter_) {
-          is_candidate_[cur] = query_counter_;
+        // if (is_candidate_[cur] != query_counter_) {
+        if(is_candidate_.insert(cur).second){
+          // is_candidate_[cur] = query_counter_;
           result->push_back(cur);
         }
 
