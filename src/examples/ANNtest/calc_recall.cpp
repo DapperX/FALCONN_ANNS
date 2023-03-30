@@ -76,7 +76,7 @@ void visit_point(const T &array, size_t dim0, size_t dim1)
 }
 
 template<typename T, class U, class V>
-size_t output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal::timer &t, uint32_t num_probes, uint32_t recall, 
+double output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal::timer &t, uint32_t num_probes, uint32_t recall, 
 	uint32_t cnt_query, std::vector<V> &q, std::vector<uint32_t*> &gt, uint32_t rank_max, int32_t max_num_candidates)
 {
 	typedef std::pair<uint32_t,float> pair;
@@ -147,7 +147,7 @@ size_t output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal:
 	cout << "average number of candidates: " << stats.average_num_candidates << endl;
 	cout << "average number of unique candidates: " << stats.average_num_unique_candidates << endl;
 	puts("---");
-	return total_shot;
+	return double(total_shot)/cnt_query/recall;
 }
 
 template<typename T, class U>
@@ -186,48 +186,56 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 
 	for(auto k : cnt_rank_cmp)
 	{
-	std::vector<int32_t> limit_cand_list;
-	limit_cand_list.push_back(10000*k);
-	limit_cand_list.push_back(5000*k);
-	limit_cand_list.push_back(200*k);
-	limit_cand_list.push_back(500*k);
-	limit_cand_list.push_back(1000*k);
-	limit_cand_list.push_back(2000*k);
-	limit_cand_list.push_back(100000*k);
-	for(auto max_cand: limit_cand_list)
-	{
-		uint32_t l_last = L;
-		for(auto t : threshold)
+		std::vector<int32_t> limit_cand_list;
+		limit_cand_list.push_back(10000*k);
+		limit_cand_list.push_back(5000*k);
+		limit_cand_list.push_back(200*k);
+		limit_cand_list.push_back(500*k);
+		limit_cand_list.push_back(2000*k);
+		limit_cand_list.push_back(100000*k);
+		for(auto max_cand: limit_cand_list)
 		{
-			printf("searching for k=%u, th=%f\n", k, t);
-			const size_t target = t*cnt_query*k;
-			uint32_t l=l_last, r_limit=k*150;
-			uint32_t r = l;
-			bool found = false;
-			while(true)
+			uint32_t l_last = L;
+			float recall_last = 0;
+			for(auto t : threshold)
 			{
-				// auto [best_shot, best_beta] = get_best(k, r);
-				if(get_best(k,r,max_cand)>=target)
+				printf("searching for k=%u, th=%f\n", k, t);
+				if(recall_last>t)
 				{
-					found = true;
-					break;
+					puts("skipped");
+					continue;
 				}
-				if(r==r_limit) break;
-				r = std::min(r*2, r_limit);
+
+				// const size_t target = t*cnt_query*k;
+				const double target = t;
+				uint32_t l=l_last, r_limit=k*150;
+				uint32_t r = l;
+				bool found = false;
+				while(true)
+				{
+					// auto [best_shot, best_beta] = get_best(k, r);
+					if(get_best(k,r,max_cand)>=target)
+					{
+						found = true;
+						break;
+					}
+					if(r==r_limit) break;
+					r = std::min(r*2, r_limit);
+				}
+				if(!found) break;
+				while(r-l>l*0.05+1)
+				{
+					const auto mid = (l+r)/2;
+					const auto best_shot = get_best(k,mid,max_cand);
+					if(best_shot>=target)
+						r = mid;
+					else
+						l = mid;
+					recall_last = best_shot;
+				}
+				l_last = l;
 			}
-			if(!found) break;
-			while(r-l>l*0.05+1)
-			{
-				const auto mid = (l+r)/2;
-				const auto best_shot = get_best(k,mid,max_cand);
-				if(best_shot>=target)
-					r = mid;
-				else
-					l = mid;
-			}
-			l_last = l;
 		}
-	}
 	}
 }
 
