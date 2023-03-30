@@ -15,6 +15,9 @@ export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999
 export L=
 export rot=1
 
+export K=0
+export lastk=0
+
 P=/ssd1/data
 G=/ssd1/results
 #-------------------------------------------------
@@ -128,6 +131,7 @@ TG=$G/text2image1B
 dataset=YandexT2I
 file_in=$TP/base.1B.fbin:fbin
 file_q=$TP/query.public.100K.fbin:fbin
+#dist=ndot
 
 L=30
 
