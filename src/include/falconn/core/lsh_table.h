@@ -213,7 +213,7 @@ class StaticLSHTable
     const StaticLSHTable& parent_;
     int_fast32_t query_counter_ = 0;
     // std::vector<int32_t> is_candidate_;
-    std::unordered_set<bool> is_candidate_;
+    std::unordered_set<int32_t> is_candidate_;
     typename LSH::Query lsh_query_;
     std::vector<std::vector<HashType>> tmp_probes_by_table_;
     std::pair<typename HashTable::Iterator, typename HashTable::Iterator>
