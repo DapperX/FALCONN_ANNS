@@ -158,7 +158,7 @@ scale=100
 file_gt=$P/ssnpp-100M:irange
 th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9
 lc=${lc_100}
-#bash run_FALCONN_single.sh
+bash run_FALCONN_single.sh
 
 scale=1000
 file_gt=$P/FB_ssnpp_public_queries_1B_GT.rangeres:irange
