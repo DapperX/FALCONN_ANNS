@@ -272,7 +272,7 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 						break;
 					}
 					printf("recall_last: %f (%u)\n", recall_last, cnt_reach_limit);
-					if(best_shot<recall_last)
+					if(best_shot<recall_last+1e-5)
 					{
 						cnt_reach_limit++;
 						if(cnt_reach_limit>=3)
