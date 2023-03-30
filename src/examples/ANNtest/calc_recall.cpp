@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <string>
 #include <map>
+#include <optional>
 #include <chrono>
 #include <stdexcept>
 // #include <memory>
@@ -44,7 +45,7 @@ to_densevec<T> to_point;
 template<typename T>
 class gt_converter{
 public:
-	using type = T*;
+	using type = std::vector<T>;
 	using type_elem = T;
 
 	template<typename Iter>
@@ -55,7 +56,8 @@ public:
 
 		const uint32_t n = std::distance(begin, end);
 
-		T *gt = new T[n];
+		// T *gt = new T[n];
+		auto gt = std::vector<T>(n);
 		for(uint32_t i=0; i<n; ++i)
 			gt[i] = *(begin+i);
 		return gt;
@@ -77,7 +79,8 @@ void visit_point(const T &array, size_t dim0, size_t dim1)
 
 template<typename T, class U, class V>
 double output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal::timer &t, uint32_t num_probes, uint32_t recall, 
-	uint32_t cnt_query, std::vector<V> &q, std::vector<uint32_t*> &gt, uint32_t rank_max, int32_t max_num_candidates)
+	uint32_t cnt_query, std::vector<V> &q, std::vector<std::vector<uint32_t>> &gt, uint32_t rank_max, int32_t max_num_candidates, 
+	std::optional<float> radius)
 {
 	typedef std::pair<uint32_t,float> pair;
 	std::unique_ptr<falconn::LSHNearestNeighborQueryPool<U,uint32_t>> 
@@ -87,15 +90,22 @@ double output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal:
 	parlay::sequence<std::vector<uint32_t>> res(cnt_query);
 
 	auto do_query = [&](size_t i){
-		query_pool->find_k_nearest_neighbors(q[i], recall, &res[i]);
-		/*
-		const auto tid = parlay::worker_id();
-		query_pool->get_candidates_with_duplicates(q, res_raw[tid]);
-		res[i] = parlay::tabulate(res_raw[tid].size(), [&](size_t j){
-			const auto v = res_raw[tid][j];
-			return pair{v, };
-		});
-		*/
+		if(radius)
+		{
+			query_pool->find_near_neighbors(q[i], *radius, &res[i]);
+		}
+		else
+		{
+			query_pool->find_k_nearest_neighbors(q[i], recall, &res[i]);
+			/*
+			const auto tid = parlay::worker_id();
+			query_pool->get_candidates_with_duplicates(q, res_raw[tid]);
+			res[i] = parlay::tabulate(res_raw[tid].size(), [&](size_t j){
+				const auto v = res_raw[tid][j];
+				return pair{v, };
+			});
+			*/
+		}
 	};
 
 	parlay::parallel_for(0, std::min<uint32_t>(cnt_query,parlay::num_workers()*2), [&](size_t i){
@@ -107,38 +117,80 @@ double output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal:
 		do_query(i);
 	});
 	double time_query = t.next_time();
+	const auto qps = cnt_query/time_query;
 	printf("FALCONN: Find neighbors: %.4f\n", time_query);
 
-	if(rank_max<recall)
-		recall = rank_max;
-//	uint32_t cnt_all_shot = 0;
-	std::vector<uint32_t> result(recall+1);
-	printf("measure recall@%u with num_probes=%u on %u queries\n", recall, num_probes, cnt_query);
-	for(uint32_t i=0; i<cnt_query; ++i)
+	double ret_val = 0;
+	if(radius) // range search
 	{
-		uint32_t cnt_shot = 0;
-		for(uint32_t j=0; j<recall; ++j)
-			if(std::find_if(res[i].begin(),res[i].end(),[&](const uint32_t p){
-				return p==gt[i][j];}) != res[i].end())
+		// -----------------
+		float nonzero_correct = 0.0;
+		float zero_correct = 0.0;
+		uint32_t num_nonzero = 0;
+		uint32_t num_zero = 0;
+		size_t num_entries = 0;
+		size_t num_reported = 0;
+
+		for(uint32_t i=0; i<cnt_query; i++)
+		{
+			if(gt[i].size()==0)
 			{
-				cnt_shot++;
+				num_zero++;
+				if(res[i].size()==0)
+					zero_correct += 1;
 			}
-		result[cnt_shot]++;
+			else
+			{
+				num_nonzero++;
+				size_t num_real_results = gt[i].size();
+				size_t num_correctly_reported = res[i].size();
+				num_entries += num_real_results;
+				num_reported += num_correctly_reported;
+				nonzero_correct += float(num_correctly_reported)/num_real_results;
+			}
+		}
+		const float nonzero_recall = nonzero_correct/num_nonzero;
+		const float zero_recall = zero_correct/num_zero;
+		const float total_recall = (nonzero_correct+zero_correct)/cnt_query;
+		const float alt_recall = float(num_reported)/num_entries;
+
+		printf("measure range recall with num_probes=%u max_cand=%d on %u queries\n", num_probes, max_num_candidates, cnt_query);
+		printf("query finishes at %ekqps\n", qps/1000);
+		printf("#non-zero queries: %u, #zero queries: %u\n", num_nonzero, num_zero);
+		printf("non-zero recall: %f, zero recall: %f\n", nonzero_recall, zero_recall);
+		printf("total_recall: %f, alt_recall: %f\n", total_recall, alt_recall);
+
+		ret_val = nonzero_recall;
 	}
-	// printf("#all shot: %u (%.2f)\n", cnt_all_shot, float(cnt_all_shot)/cnt_query);
-	uint32_t total_shot = 0;
-	for(uint32_t i=0; i<=recall; ++i)
+	else // k-NN search
 	{
-		printf("%u ", result[i]);
-		total_shot += result[i]*i;
+		if(rank_max<recall)
+			recall = rank_max;
+	//	uint32_t cnt_all_shot = 0;
+		std::vector<uint32_t> result(recall+1);
+		printf("measure recall@%u with num_probes=%u on %u queries\n", recall, num_probes, cnt_query);
+		for(uint32_t i=0; i<cnt_query; ++i)
+		{
+			uint32_t cnt_shot = 0;
+			for(uint32_t j=0; j<recall; ++j)
+				if(std::find_if(res[i].begin(),res[i].end(),[&](const uint32_t p){
+					return p==gt[i][j];}) != res[i].end())
+				{
+					cnt_shot++;
+				}
+			result[cnt_shot]++;
+		}
+		// printf("#all shot: %u (%.2f)\n", cnt_all_shot, float(cnt_all_shot)/cnt_query);
+		uint32_t total_shot = 0;
+		for(uint32_t i=0; i<=recall; ++i)
+		{
+			printf("%u ", result[i]);
+			total_shot += result[i]*i;
+		}
+		putchar('\n');
+		printf("%.6f at %ekqps, max_cand=%d\n", float(total_shot)/cnt_query/recall, qps/1000, max_num_candidates);
+		ret_val = double(total_shot)/cnt_query/recall;
 	}
-	putchar('\n');
-	printf("%.6f at %ekqps, max_cand=%d\n", float(total_shot)/cnt_query/recall, cnt_query/time_query/1000, max_num_candidates);
-	/* // TODO
-	printf("# visited: %lu\n", g.total_visited.load());
-	printf("# eval: %lu\n", g.total_eval.load());
-	printf("size of C: %lu\n", g.total_size_C.load());
-	*/
 	falconn::QueryStatistics stats = query_pool->get_query_statistics();
 	cout << "average total query time: " << stats.average_total_query_time << endl;
 	cout << "average lsh time: " << stats.average_lsh_time << endl;
@@ -147,7 +199,7 @@ double output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal:
 	cout << "average number of candidates: " << stats.average_num_candidates << endl;
 	cout << "average number of unique candidates: " << stats.average_num_unique_candidates << endl;
 	puts("---");
-	return double(total_shot)/cnt_query/recall;
+	return ret_val;
 }
 
 template<typename T, class U>
@@ -180,9 +232,12 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 	auto cnt_rank_cmp = parse_array(param.getOptionValue("-r"), atoi);
 	auto threshold = parse_array(param.getOptionValue("-th"), atof);
 	auto limit_cand_list = parse_array(param.getOptionValue("-lc","1000000"), atoi);
+	auto radius = [](const char *s) -> std::optional<float>{
+			return s? std::optional<float>{atof(s)}: std::optional<float>{};
+		}(param.getOptionValue("-rad"));
 
 	auto get_best = [&](uint32_t k, uint32_t num_probes, int32_t max_num_candidates=-1){
-		return output_recall<T>(tbl, t, num_probes, k, cnt_query, q, gt, rank_max, max_num_candidates);
+		return output_recall<T>(tbl, t, num_probes, k, cnt_query, q, gt, rank_max, max_num_candidates, radius);
 	};
 
 	for(auto k : cnt_rank_cmp)
@@ -320,7 +375,8 @@ int main(int argc, char **argv)
 		"-type <elemType> -n <numInput> -r <recall@R>,... -th <threshold>,... "
 		"-in <inFile> -q <queryFile> -g <groundtruthFile> [-k <numQuery>=all] "
 		"-dist (L2|ndot) -lsh (cp|hp) -l <numHashTable> [-b <numHashBit>] [-rot <numRotation>] "
-		"[-K numHashFunc] [-lastk <last_cp_dimension>] [-lc <limit_candidate>...]"
+		"[-K numHashFunc] [-lastk <last_cp_dimension>] [-lc <limit_candidate>...] "
+		"[-rad radius (for range search)]"
 	);
 
 	const char* type = parameter.getOptionValue("-type");
