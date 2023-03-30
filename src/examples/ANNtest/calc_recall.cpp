@@ -98,7 +98,7 @@ double output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal:
 		*/
 	};
 
-	parlay::parallel_for(0, cnt_query, [&](size_t i){
+	parlay::parallel_for(0, std::min<uint32_t>(cnt_query,parlay::num_workers()*2), [&](size_t i){
 		do_query(i);
 	});
 	t.next("Warm-up search");
@@ -179,26 +179,20 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 	const uint32_t cnt_query = param.getOptionIntValue("-k", q.size());
 	auto cnt_rank_cmp = parse_array(param.getOptionValue("-r"), atoi);
 	auto threshold = parse_array(param.getOptionValue("-th"), atof);
+	auto limit_cand_list = parse_array(param.getOptionValue("-lc","1000000"), atoi);
 
 	auto get_best = [&](uint32_t k, uint32_t num_probes, int32_t max_num_candidates=-1){
 		return output_recall<T>(tbl, t, num_probes, k, cnt_query, q, gt, rank_max, max_num_candidates);
 	};
 
 	for(auto k : cnt_rank_cmp)
-	{
-		std::vector<int32_t> limit_cand_list;
-		limit_cand_list.push_back(10000*k);
-		limit_cand_list.push_back(5000*k);
-		limit_cand_list.push_back(200*k);
-		limit_cand_list.push_back(500*k);
-		limit_cand_list.push_back(2000*k);
-		limit_cand_list.push_back(100000*k);
 		for(auto max_cand: limit_cand_list)
 		{
 			uint32_t l_last = L;
-			float recall_last = 0;
+			double recall_last = 0;
 			for(auto t : threshold)
 			{
+				printf("lastL: %u, lastRecall: %f\n", l_last, recall_last);
 				printf("searching for k=%u, th=%f\n", k, t);
 				if(recall_last>t)
 				{
@@ -211,14 +205,26 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 				uint32_t l=l_last, r_limit=k*150;
 				uint32_t r = l;
 				bool found = false;
+				uint32_t cnt_reach_limit = 0;
 				while(true)
 				{
 					// auto [best_shot, best_beta] = get_best(k, r);
-					if(get_best(k,r,max_cand)>=target)
+					const auto best_shot = get_best(k,r,max_cand);
+					if(best_shot>=target)
 					{
 						found = true;
+						recall_last = best_shot;
 						break;
 					}
+					printf("recall_last: %f (%u)\n", recall_last, cnt_reach_limit);
+					if(best_shot<recall_last)
+					{
+						cnt_reach_limit++;
+						if(cnt_reach_limit>=3)
+							break;
+					}
+					else cnt_reach_limit = 0;
+					recall_last = best_shot;
 					if(r==r_limit) break;
 					r = std::min(r*2, r_limit);
 				}
@@ -236,7 +242,6 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 				l_last = l;
 			}
 		}
-	}
 }
 
 template<typename T>
@@ -315,7 +320,7 @@ int main(int argc, char **argv)
 		"-type <elemType> -n <numInput> -r <recall@R>,... -th <threshold>,... "
 		"-in <inFile> -q <queryFile> -g <groundtruthFile> [-k <numQuery>=all] "
 		"-dist (L2|ndot) -lsh (cp|hp) -l <numHashTable> [-b <numHashBit>] [-rot <numRotation>] "
-		"[-K numHashFunc] [-lastk <last_cp_dimension>]"
+		"[-K numHashFunc] [-lastk <last_cp_dimension>] [-lc <limit_candidate>...]"
 	);
 
 	const char* type = parameter.getOptionValue("-type");
