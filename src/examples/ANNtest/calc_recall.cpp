@@ -77,11 +77,11 @@ void visit_point(const T &array, size_t dim0, size_t dim1)
 
 template<typename T, class U, class V>
 size_t output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal::timer &t, uint32_t num_probes, uint32_t recall, 
-	uint32_t cnt_query, std::vector<V> &q, std::vector<uint32_t*> &gt, uint32_t rank_max)
+	uint32_t cnt_query, std::vector<V> &q, std::vector<uint32_t*> &gt, uint32_t rank_max, int32_t max_num_candidates)
 {
 	typedef std::pair<uint32_t,float> pair;
 	std::unique_ptr<falconn::LSHNearestNeighborQueryPool<U,uint32_t>> 
-		query_pool(tbl.construct_query_pool(num_probes, 1000*recall/*TODO*/, parlay::num_workers()));
+		query_pool(tbl.construct_query_pool(num_probes, max_num_candidates, parlay::num_workers()));
 	// parlay::sequence<std::vector<uint32_t>> res_raw(parlay::num_workers());
 	// parlay::sequence<parlay::sequence<pair>> res(cnt_query);
 	parlay::sequence<std::vector<uint32_t>> res(cnt_query);
@@ -133,7 +133,7 @@ size_t output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, parlay::internal:
 		total_shot += result[i]*i;
 	}
 	putchar('\n');
-	printf("%.6f at %ekqps\n", float(total_shot)/cnt_query/recall, cnt_query/time_query/1000);
+	printf("%.6f at %ekqps, max_cand=%d\n", float(total_shot)/cnt_query/recall, cnt_query/time_query/1000, max_num_candidates);
 	/* // TODO
 	printf("# visited: %lu\n", g.total_visited.load());
 	printf("# eval: %lu\n", g.total_eval.load());
@@ -180,11 +180,21 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 	auto cnt_rank_cmp = parse_array(param.getOptionValue("-r"), atoi);
 	auto threshold = parse_array(param.getOptionValue("-th"), atof);
 
-	auto get_best = [&](uint32_t k, uint32_t num_probes){
-		return output_recall<T>(tbl, t, num_probes, k, cnt_query, q, gt, rank_max);
+	auto get_best = [&](uint32_t k, uint32_t num_probes, int32_t max_num_candidates=-1){
+		return output_recall<T>(tbl, t, num_probes, k, cnt_query, q, gt, rank_max, max_num_candidates);
 	};
 
 	for(auto k : cnt_rank_cmp)
+	{
+	std::vector<int32_t> limit_cand_list;
+	limit_cand_list.push_back(10000*k);
+	limit_cand_list.push_back(5000*k);
+	limit_cand_list.push_back(200*k);
+	limit_cand_list.push_back(500*k);
+	limit_cand_list.push_back(1000*k);
+	limit_cand_list.push_back(2000*k);
+	limit_cand_list.push_back(100000*k);
+	for(auto max_cand: limit_cand_list)
 	{
 		uint32_t l_last = L;
 		for(auto t : threshold)
@@ -197,7 +207,7 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 			while(true)
 			{
 				// auto [best_shot, best_beta] = get_best(k, r);
-				if(get_best(k,r)>=target)
+				if(get_best(k,r,max_cand)>=target)
 				{
 					found = true;
 					break;
@@ -209,7 +219,7 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 			while(r-l>l*0.05+1)
 			{
 				const auto mid = (l+r)/2;
-				const auto best_shot = get_best(k,mid);
+				const auto best_shot = get_best(k,mid,max_cand);
 				if(best_shot>=target)
 					r = mid;
 				else
@@ -217,6 +227,7 @@ void output_recall(LSHNearestNeighborTable<U,uint32_t> &tbl, commandLine param, 
 			}
 			l_last = l;
 		}
+	}
 	}
 }
 
