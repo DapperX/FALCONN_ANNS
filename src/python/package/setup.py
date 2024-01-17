@@ -1,11 +1,7 @@
 import os
 import sys
 
-try:
-    import pypandoc
-    long_description = pypandoc.convert('README.md', 'rst', format='md')
-except (IOError, ImportError):
-    long_description = open('README.md').read()
+long_description = open('README.md').read()
 
 try:
     from setuptools import setup, find_packages, Extension
@@ -20,9 +16,9 @@ if sys.platform == 'darwin':
 
 module = Extension(
     '_falconn',
-    sources=['internal/python_wrapper.cc'],
+    sources=['src/python/wrapper/python_wrapper.cc'],
     extra_compile_args=extra_args,
-    include_dirs=['include', 'external/eigen', 'external/pybind11/include', 'external/simple-serializer'])
+    include_dirs=['src/include', 'external/eigen', 'external/pybind11/include', 'external/simple-serializer'])
 
 setup(
     name='FALCONN',
