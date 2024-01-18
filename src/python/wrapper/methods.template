@@ -24,6 +24,32 @@
     return inner_entity_->find_nearest_neighbor(converted_query);
   }
 
+  /*
+  std::pair<std::vector<std::vector<int32_t>>,uint64_t> find_knn_batch(OuterNumPyArray qs, int_fast64_t k) {
+    InnerPlainArrayPointSet converted_queries = numpy_to_plain_dataset(qs);
+    py::gil_scoped_release release;
+    return inner_entity_->find_knn_batch(converted_queries, k);
+  }
+  */
+  std::pair<std::vector<std::vector<int32_t>>,uint64_t>
+  find_knn_batch(OuterNumPyArray qs, int_fast64_t k) {
+    InnerPlainArrayPointSet converted_queries = numpy_to_plain_dataset(qs);
+
+    const auto num_points = converted_queries.num_points;
+    const auto data = converted_queries.data;
+    const auto dim = converted_queries.dimension;
+    std::vector<std::vector<int32_t>> knn_res(num_points);
+
+    parlay::parallel_for(0, num_points, [&](size_t i){
+      typedef Eigen::Map<const DenseVector<ScalarType>> ConstVectorMap;
+      ConstVectorMap q(&data[i*dim], static_cast<int>(dim));
+      // knn_res[i] = find_k_nearest_neighbors(q, k);
+      inner_entity_->find_k_nearest_neighbors(q, k, &knn_res[i]);
+    });
+    // TODO: cnt
+    return std::make_pair(std::move(knn_res), 1234);
+  }
+
   std::vector<int32_t> find_k_nearest_neighbors(OuterNumPyArray q,
                                                 int_fast64_t k) {
     InnerEigenMap converted_query = numpy_to_eigen(q);

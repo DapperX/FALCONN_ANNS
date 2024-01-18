@@ -6,8 +6,11 @@
 #include <pybind11/stl.h>
 
 #include <Eigen/Dense>
-
+#include <utility>
 #include <memory>
+
+#include <parlay/parallel.h>
+#include <parlay/primitives.h>
 
 namespace falconn {
 namespace python {
@@ -219,7 +222,7 @@ std::unique_ptr<OuterLSHTable> construct_table_dense_{{scalar_type}}(
 {% for class_name in ['PyLSHNearestNeighborQueryDenseFloat', 'PyLSHNearestNeighborQueryPoolDenseFloat', 'PyLSHNearestNeighborQueryDenseDouble', 'PyLSHNearestNeighborQueryPoolDenseDouble'] %}
   // we do not expose a constructor
   py::class_<{{class_name}}>(
-      m, "{{class_name}}"){% for method_name in ['set_num_probes', 'get_num_probes', 'set_max_num_candidates', 'get_max_num_candidates', 'find_nearest_neighbor', 'find_k_nearest_neighbors', 'find_near_neighbors', 'get_unique_candidates', 'get_candidates_with_duplicates', 'reset_query_statistics', 'get_query_statistics'] %}
+      m, "{{class_name}}"){% for method_name in ['set_num_probes', 'get_num_probes', 'set_max_num_candidates', 'get_max_num_candidates', 'find_nearest_neighbor', 'find_k_nearest_neighbors', 'find_knn_batch', 'find_near_neighbors', 'get_unique_candidates', 'get_candidates_with_duplicates', 'reset_query_statistics', 'get_query_statistics'] %}
       .def("{{method_name}}",
            &{{class_name}}::{{method_name}}){% endfor %};
 {% endfor %}

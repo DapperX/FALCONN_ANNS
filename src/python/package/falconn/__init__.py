@@ -97,6 +97,11 @@ class Queryable:
                 'query dimension mismatch: {} expected, but {} found'.format(
                     self._parent._params.dimension, query.shape[0]))
 
+    def _check_queries(self, queries):
+        if not isinstance(queries, _numpy.ndarray):
+            raise TypeError('queries must be an instance of numpy.ndarray')
+        self._check_query(queries[0])
+
     def find_k_nearest_neighbors(self, query, k):
         """Retrieve the closest `k` neighbors to `query`.
 
@@ -115,6 +120,12 @@ class Queryable:
         if k <= 0:
             raise ValueError('k must be positive rather than {}'.format(k))
         return self._inner_entity.find_k_nearest_neighbors(query, k)
+
+    def find_knn_batch(self, queries, k):
+        self._check_queries(queries)
+        if k <= 0:
+            raise ValueError('k must be positive rather than {}'.format(k))
+        return self._inner_entity.find_knn_batch(queries, k)
 
     def find_near_neighbors(self, query, threshold):
         """Find all the points within `threshold` distance from `query`.
