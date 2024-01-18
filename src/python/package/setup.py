@@ -9,7 +9,7 @@ except ImportError:
     sys.stderr.write('Setuptools not found!\n')
     raise
 
-extra_args = ['-std=c++11', '-march=native', '-O3']
+extra_args = ['-std=c++17', '-march=native', '-O3']
 if sys.platform == 'darwin':
     extra_args += ['-mmacosx-version-min=10.9', '-stdlib=libc++']
     os.environ['LDFLAGS'] = '-mmacosx-version-min=10.9'
@@ -18,7 +18,7 @@ module = Extension(
     '_falconn',
     sources=['src/python/wrapper/python_wrapper.cc'],
     extra_compile_args=extra_args,
-    include_dirs=['src/include', 'external/eigen', 'external/pybind11/include', 'external/simple-serializer'])
+    include_dirs=['src/include', 'external/eigen', 'external/pybind11/include', 'external/simple-serializer', 'external/parlaylib/include'])
 
 setup(
     name='FALCONN',
